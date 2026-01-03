@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -20,10 +21,20 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navigate = useNavigate();
   const location = useLocation();
   const isAdmin = user?.role === 'admin' || user?.role === 'hr';
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const handleLogout = () => {
-    logout();
-    navigate('/signin');
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate('/signin');
+    } catch (error) {
+      console.error('Logout error:', error);
+      // Still navigate to signin even if there's an error
+      navigate('/signin');
+    } finally {
+      setLoggingOut(false);
+    }
   };
 
   const navItems = isAdmin
@@ -74,16 +85,33 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 })}
               </div>
             </div>
-            <div className="flex items-center">
-              <span className="text-sm text-gray-700 mr-4">
-                {user?.profile?.first_name} {user?.profile?.last_name}
-              </span>
+            <div className="flex items-center gap-3">
+              <Link
+                to="/profile"
+                className="text-sm font-medium text-gray-700 hover:text-primary-600 transition-colors cursor-pointer px-2 py-1 rounded hover:bg-gray-100"
+                title="Click to view your profile"
+              >
+                {user?.username || 
+                 (user?.profile?.first_name && user?.profile?.last_name 
+                  ? `${user.profile.first_name} ${user.profile.last_name}`.trim()
+                  : user?.profile?.first_name || user?.email || 'User')}
+              </Link>
               <button
                 onClick={handleLogout}
-                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none"
+                disabled={loggingOut}
+                className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
+                {loggingOut ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Logging out...
+                  </>
+                ) : (
+                  <>
+                    <LogOut className="w-4 h-4 mr-2" />
+                    Logout
+                  </>
+                )}
               </button>
             </div>
           </div>

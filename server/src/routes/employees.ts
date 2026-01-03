@@ -52,6 +52,7 @@ router.get('/:id', (req: AuthRequest, res) => {
         SELECT 
           u.id,
           u.employee_id,
+          u.username,
           u.email,
           u.role,
           p.*
@@ -96,13 +97,30 @@ router.put('/:id', (req: AuthRequest, res) => {
       salary,
     } = req.body;
 
-    // Employees can only edit limited fields
+    // Employees can edit their name, phone, address, and profile picture
     if (!isAdmin) {
       db.prepare(`
         UPDATE employee_profiles 
-        SET phone = ?, address = ?, profile_picture = ?, updated_at = CURRENT_TIMESTAMP
+        SET 
+          first_name = ?,
+          last_name = ?,
+          phone = ?, 
+          address = ?, 
+          profile_picture = ?, 
+          updated_at = CURRENT_TIMESTAMP
         WHERE user_id = ?
-      `).run(phone, address, profile_picture, userId);
+      `).run(first_name, last_name, phone, address, profile_picture, userId);
+      
+      // Update username in users table to match the full name
+      const fullName = `${first_name || ''} ${last_name || ''}`.trim();
+      if (fullName) {
+        try {
+          db.prepare('UPDATE users SET username = ? WHERE id = ?').run(fullName, userId);
+        } catch (error: any) {
+          // If username column doesn't exist or update fails, continue
+          console.warn('Could not update username:', error.message);
+        }
+      }
     } else {
       // Admin can edit all fields
       db.prepare(`
@@ -133,6 +151,17 @@ router.put('/:id', (req: AuthRequest, res) => {
         salary,
         userId
       );
+      
+      // Update username in users table to match the full name
+      const fullName = `${first_name || ''} ${last_name || ''}`.trim();
+      if (fullName) {
+        try {
+          db.prepare('UPDATE users SET username = ? WHERE id = ?').run(fullName, userId);
+        } catch (error: any) {
+          // If username column doesn't exist or update fails, continue
+          console.warn('Could not update username:', error.message);
+        }
+      }
     }
 
     res.json({ message: 'Profile updated successfully' });

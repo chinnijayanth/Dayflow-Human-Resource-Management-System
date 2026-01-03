@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import Layout from '../components/Layout';
 import { useAuth } from '../contexts/AuthContext';
 import axios from 'axios';
-import { DollarSign, Download } from 'lucide-react';
+import { DollarSign, Download, CheckCircle, XCircle } from 'lucide-react';
 import { format } from 'date-fns';
 
 const Payroll = () => {
@@ -21,7 +21,9 @@ const Payroll = () => {
     base_salary: '',
     allowances: '',
     deductions: '',
+    status: 'pending',
   });
+  const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (isAdmin) {
@@ -73,6 +75,7 @@ const Payroll = () => {
         base_salary: Number(formData.base_salary),
         allowances: Number(formData.allowances) || 0,
         deductions: Number(formData.deductions) || 0,
+        status: formData.status,
       });
       setShowForm(false);
       setFormData({
@@ -82,10 +85,37 @@ const Payroll = () => {
         base_salary: '',
         allowances: '',
         deductions: '',
+        status: 'pending',
       });
       fetchAllPayroll();
     } catch (error: any) {
       alert(error.response?.data?.error || 'Failed to save payroll');
+    }
+  };
+
+  const handleApprovePayroll = async (id: number, currentStatus: string) => {
+    const newStatus = currentStatus === 'paid' ? 'pending' : 'paid';
+    const confirmMessage = newStatus === 'paid' 
+      ? 'Are you sure you want to mark this payroll as paid? This will be visible to the employee.'
+      : 'Are you sure you want to mark this payroll as pending?';
+    
+    if (!window.confirm(confirmMessage)) {
+      return;
+    }
+
+    try {
+      await axios.put(`/api/payroll/${id}/status`, { status: newStatus });
+      setMessage(`Payroll status updated to ${newStatus} successfully!`);
+      setTimeout(() => setMessage(''), 3000);
+      
+      // Refresh payroll list to show updated status
+      if (isAdmin) {
+        await fetchAllPayroll();
+      } else {
+        await fetchMyPayroll();
+      }
+    } catch (error: any) {
+      alert(error.response?.data?.error || 'Failed to update payroll status');
     }
   };
 
@@ -127,6 +157,11 @@ Status: ${data.status}
   return (
     <Layout>
       <div className="px-4 sm:px-6 lg:px-8">
+        {message && (
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 text-green-700 rounded">
+            {message}
+          </div>
+        )}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold text-gray-900">Payroll</h1>
           {isAdmin && (
@@ -287,6 +322,20 @@ Status: ${data.status}
                     onChange={(e) => setFormData({ ...formData, deductions: e.target.value })}
                   />
                 </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Status
+                  </label>
+                  <select
+                    className="input"
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="paid">Paid</option>
+                  </select>
+                </div>
               </div>
 
               <div className="flex gap-3">
@@ -376,13 +425,38 @@ Status: ${data.status}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <button
-                        onClick={() => downloadSalarySlip(record.user_id, record.month, record.year)}
-                        className="text-primary-600 hover:text-primary-900 flex items-center"
-                      >
-                        <Download className="w-4 h-4 mr-1" />
-                        Download
-                      </button>
+                      <div className="flex items-center gap-2">
+                        {isAdmin && (
+                          <button
+                            onClick={() => handleApprovePayroll(record.id, record.status)}
+                            className={`flex items-center px-2 py-1 rounded text-xs font-medium ${
+                              record.status === 'paid'
+                                ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
+                                : 'bg-green-100 text-green-800 hover:bg-green-200'
+                            }`}
+                            title={record.status === 'paid' ? 'Mark as Pending' : 'Mark as Paid'}
+                          >
+                            {record.status === 'paid' ? (
+                              <>
+                                <XCircle className="w-3 h-3 mr-1" />
+                                Mark Pending
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                Approve
+                              </>
+                            )}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => downloadSalarySlip(record.user_id, record.month, record.year)}
+                          className="text-primary-600 hover:text-primary-900 flex items-center"
+                        >
+                          <Download className="w-4 h-4 mr-1" />
+                          Download
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}

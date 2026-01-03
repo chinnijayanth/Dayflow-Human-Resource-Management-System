@@ -6,7 +6,9 @@ import { UserPlus } from 'lucide-react';
 const SignUp = () => {
   const [formData, setFormData] = useState({
     employee_id: '',
+    username: '',
     email: '',
+    phone: '',
     password: '',
     confirmPassword: '',
     role: 'employee' as 'employee' | 'hr',
@@ -40,14 +42,23 @@ const SignUp = () => {
     try {
       await signup({
         employee_id: formData.employee_id,
+        username: formData.username,
         email: formData.email,
+        phone: formData.phone,
         password: formData.password,
         role: formData.role,
       });
       alert('Account created successfully! Please sign in.');
       navigate('/signin');
     } catch (err: any) {
-      setError(err.response?.data?.error || 'Sign up failed');
+      if (err.response?.data?.errors && Array.isArray(err.response.data.errors)) {
+        // Handle validation errors array
+        const errorMessages = err.response.data.errors.map((e: any) => e.msg || e.message).join(', ');
+        setError(errorMessages);
+      } else {
+        const errorMessage = err.response?.data?.error || 'Sign up failed';
+        setError(errorMessage);
+      }
     } finally {
       setLoading(false);
     }
@@ -84,6 +95,24 @@ const SignUp = () => {
               />
             </div>
             <div>
+              <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+                Username (Full Name)
+              </label>
+              <input
+                id="username"
+                name="username"
+                type="text"
+                required
+                className="input mt-1"
+                placeholder="John Doe"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                Enter your full name (first and last name)
+              </p>
+            </div>
+            <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email address
               </label>
@@ -95,6 +124,21 @@ const SignUp = () => {
                 className="input mt-1"
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              />
+            </div>
+            <div>
+              <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                Phone Number
+              </label>
+              <input
+                id="phone"
+                name="phone"
+                type="tel"
+                required
+                className="input mt-1"
+                placeholder="+1234567890"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
               />
             </div>
             <div>

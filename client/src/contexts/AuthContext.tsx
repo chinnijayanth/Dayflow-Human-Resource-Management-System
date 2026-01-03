@@ -5,6 +5,7 @@ import { useNavigate } from 'react-router-dom';
 interface User {
   id: number;
   employee_id: string;
+  username?: string;
   email: string;
   role: 'employee' | 'admin' | 'hr';
   profile?: any;
@@ -15,13 +16,15 @@ interface AuthContextType {
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (data: SignupData) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
   loading: boolean;
 }
 
 interface SignupData {
   employee_id: string;
+  username: string;
   email: string;
+  phone: string;
   password: string;
   role: 'employee' | 'hr';
 }
@@ -47,9 +50,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchUser = async () => {
     try {
       const response = await axios.get('/api/auth/me');
-      setUser(response.data.user);
+      const userData = response.data.user;
+      setUser(userData);
+      // Update localStorage with latest user data
+      localStorage.setItem('user', JSON.stringify(userData));
     } catch (error) {
       localStorage.removeItem('token');
+      localStorage.removeItem('user');
       setToken(null);
     } finally {
       setLoading(false);
@@ -70,7 +77,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     await axios.post('/api/auth/signup', data);
   };
 
-  const logout = () => {
+  const logout = async () => {
+    // Auto checkout if user is an employee and has checked in but not checked out today
+    if (user && (user.role === 'employee')) {
+      try {
+        // Check if user has checked in today
+        const todayResponse = await axios.get('/api/attendance/today');
+        const todayAttendance = todayResponse.data;
+        
+        // If checked in but not checked out, perform checkout
+        if (todayAttendance && todayAttendance.check_in && !todayAttendance.check_out) {
+          try {
+            await axios.post('/api/attendance/checkout');
+            console.log('Auto checkout successful');
+          } catch (checkoutError) {
+            // Log error but don't block logout
+            console.warn('Auto checkout failed, proceeding with logout:', checkoutError);
+          }
+        }
+      } catch (error) {
+        // If we can't check attendance, just proceed with logout
+        console.warn('Could not check attendance status, proceeding with logout:', error);
+      }
+    }
+    
+    // Proceed with logout
     setToken(null);
     setUser(null);
     localStorage.removeItem('token');

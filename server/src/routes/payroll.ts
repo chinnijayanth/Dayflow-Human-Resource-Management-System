@@ -94,7 +94,7 @@ router.put('/salary/:userId', requireAdmin, (req, res) => {
 // Create/Update payroll record (Admin/HR only)
 router.post('/', requireAdmin, (req, res) => {
   try {
-    const { user_id, month, year, base_salary, allowances, deductions } = req.body;
+    const { user_id, month, year, base_salary, allowances, deductions, status } = req.body;
 
     const net_salary = base_salary + (allowances || 0) - (deductions || 0);
 
@@ -105,15 +105,75 @@ router.post('/', requireAdmin, (req, res) => {
 
     if (existing) {
       db.prepare(
-        'UPDATE payroll SET base_salary = ?, allowances = ?, deductions = ?, net_salary = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).run(base_salary, allowances || 0, deductions || 0, net_salary, existing.id);
+        'UPDATE payroll SET base_salary = ?, allowances = ?, deductions = ?, net_salary = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      ).run(base_salary, allowances || 0, deductions || 0, net_salary, status || 'pending', existing.id);
     } else {
       db.prepare(
-        'INSERT INTO payroll (user_id, month, year, base_salary, allowances, deductions, net_salary) VALUES (?, ?, ?, ?, ?, ?, ?)'
-      ).run(user_id, month, year, base_salary, allowances || 0, deductions || 0, net_salary);
+        'INSERT INTO payroll (user_id, month, year, base_salary, allowances, deductions, net_salary, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(user_id, month, year, base_salary, allowances || 0, deductions || 0, net_salary, status || 'pending');
     }
 
     res.json({ message: 'Payroll record saved successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update payroll status (Approve/Mark as Paid) - Admin/HR only
+router.put('/:id/status', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (!status || !['pending', 'paid'].includes(status)) {
+      return res.status(400).json({ error: 'Invalid status. Must be "pending" or "paid"' });
+    }
+
+    const payroll = db.prepare('SELECT * FROM payroll WHERE id = ?').get(id) as any;
+
+    if (!payroll) {
+      return res.status(404).json({ error: 'Payroll record not found' });
+    }
+
+    db.prepare(
+      'UPDATE payroll SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).run(status, id);
+
+    res.json({ 
+      message: `Payroll status updated to ${status} successfully`,
+      payroll: { ...payroll, status }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update payroll record (Admin/HR only)
+router.put('/:id', requireAdmin, (req, res) => {
+  try {
+    const { id } = req.params;
+    const { base_salary, allowances, deductions, status } = req.body;
+
+    const payroll = db.prepare('SELECT * FROM payroll WHERE id = ?').get(id) as any;
+
+    if (!payroll) {
+      return res.status(404).json({ error: 'Payroll record not found' });
+    }
+
+    const net_salary = (base_salary || payroll.base_salary) + (allowances || payroll.allowances || 0) - (deductions || payroll.deductions || 0);
+
+    db.prepare(
+      'UPDATE payroll SET base_salary = ?, allowances = ?, deductions = ?, net_salary = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    ).run(
+      base_salary || payroll.base_salary,
+      allowances !== undefined ? allowances : payroll.allowances,
+      deductions !== undefined ? deductions : payroll.deductions,
+      net_salary,
+      status || payroll.status,
+      id
+    );
+
+    res.json({ message: 'Payroll record updated successfully' });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

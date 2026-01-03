@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { runMigrations } from './migrate.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -14,6 +15,7 @@ export const initDatabase = () => {
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       employee_id TEXT UNIQUE NOT NULL,
+      username TEXT UNIQUE,
       email TEXT UNIQUE NOT NULL,
       password TEXT NOT NULL,
       role TEXT NOT NULL CHECK(role IN ('employee', 'admin', 'hr')),
@@ -22,6 +24,7 @@ export const initDatabase = () => {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
 
   // Employee profiles table
   db.exec(`
@@ -105,6 +108,9 @@ export const initDatabase = () => {
     CREATE INDEX IF NOT EXISTS idx_leave_user ON leave_requests(user_id);
     CREATE INDEX IF NOT EXISTS idx_payroll_user ON payroll(user_id, year, month);
   `);
+
+  // Run migrations
+  runMigrations();
 
   console.log('✅ Database initialized successfully');
 };

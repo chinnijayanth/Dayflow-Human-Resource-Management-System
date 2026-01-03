@@ -11,7 +11,9 @@ router.post(
   '/signup',
   [
     body('employee_id').notEmpty().withMessage('Employee ID is required'),
+    body('username').notEmpty().withMessage('Username is required'),
     body('email').isEmail().withMessage('Valid email is required'),
+    body('phone').notEmpty().withMessage('Phone number is required'),
     body('password')
       .isLength({ min: 8 })
       .withMessage('Password must be at least 8 characters')
@@ -26,31 +28,64 @@ router.post(
         return res.status(400).json({ errors: errors.array() });
       }
 
-      const { employee_id, email, password, role } = req.body;
+      const { employee_id, username, email, phone, password, role } = req.body;
 
       // Check if user exists
-      const existingUser = db
+      let existingUser: any = null;
+      
+      // Check email and employee_id first (these columns always exist)
+      existingUser = db
         .prepare('SELECT * FROM users WHERE email = ? OR employee_id = ?')
         .get(email, employee_id);
+      
+      // Also check username if column exists
+      if (!existingUser && username) {
+        try {
+          const userByUsername = db
+            .prepare('SELECT * FROM users WHERE username = ?')
+            .get(username);
+          if (userByUsername) {
+            existingUser = userByUsername;
+          }
+        } catch (err: any) {
+          // Username column might not exist yet (migration pending), ignore
+          if (!err.message.includes('no such column')) {
+            throw err;
+          }
+        }
+      }
 
       if (existingUser) {
-        return res.status(400).json({ error: 'User already exists' });
+        if (existingUser.email === email) {
+          return res.status(400).json({ error: 'Email already exists' });
+        }
+        if (existingUser.employee_id === employee_id) {
+          return res.status(400).json({ error: 'Employee ID already exists' });
+        }
+        if (existingUser.username === username) {
+          return res.status(400).json({ error: 'Username already exists' });
+        }
       }
 
       // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
 
-      // Create user
+      // Create user (migration should have added username column by now)
       const result = db
         .prepare(
-          'INSERT INTO users (employee_id, email, password, role) VALUES (?, ?, ?, ?)'
+          'INSERT INTO users (employee_id, username, email, password, role) VALUES (?, ?, ?, ?, ?)'
         )
-        .run(employee_id, email, hashedPassword, role);
+        .run(employee_id, username, email, hashedPassword, role);
 
-      // Create basic profile
+      // Create profile with username and phone
+      // Split username into first and last name (if space exists, otherwise use full as first)
+      const nameParts = username.trim().split(/\s+/);
+      const first_name = nameParts[0] || username;
+      const last_name = nameParts.slice(1).join(' ') || '';
+
       db.prepare(
-        'INSERT INTO employee_profiles (user_id, first_name, last_name) VALUES (?, ?, ?)'
-      ).run(result.lastInsertRowid, 'New', 'User');
+        'INSERT INTO employee_profiles (user_id, first_name, last_name, phone) VALUES (?, ?, ?, ?)'
+      ).run(result.lastInsertRowid, first_name, last_name, phone);
 
       res.status(201).json({
         message: 'User created successfully. Please verify your email.',
@@ -109,6 +144,7 @@ router.post(
         user: {
           id: user.id,
           employee_id: user.employee_id,
+          username: user.username || `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() || user.email,
           email: user.email,
           role: user.role,
           profile,
@@ -142,6 +178,7 @@ router.get('/me', async (req, res) => {
       user: {
         id: user.id,
         employee_id: user.employee_id,
+        username: user.username || `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim() || user.email,
         email: user.email,
         role: user.role,
         profile,
